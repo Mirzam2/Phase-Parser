@@ -2,6 +2,8 @@ from mpi4py import MPI
 import numpy as np
 import sys
 import os
+import json
+import resource
 
 # Инициализация базового коммуникатора
 comm = MPI.COMM_WORLD
@@ -12,7 +14,7 @@ try:
     from ase import io, Atoms
     from scipy.spatial import cKDTree
 except ImportError as e:
-    print(f"[{rank}] ERROR: Missing library! {e}", flush=True)
+    # print(f"[{rank}] ERROR: Missing library! {e}", flush=True)
     sys.exit(1)
 
 comm.Barrier()
@@ -21,7 +23,7 @@ t_start = MPI.Wtime()
 # ==========================================
 # ПАРАМЕТРЫ
 # ==========================================
-FILENAME = "HEB2_5gr_p1.data" 
+FILENAME = "data/HfB2_X.dat" 
 CUTOFF = 3.5 
 
 # ==========================================
@@ -38,7 +40,8 @@ cart_comm = comm.Create_cart(dims.tolist(), periods=[True, True, True])
 my_coords = np.array(cart_comm.Get_coords(rank))
 
 if rank == 0:
-    print(f"Total ranks: {size}. Grid decomposition: {dims}", flush=True)
+    pass
+    # print(f"Total ranks: {size}. Grid decomposition: {dims}", flush=True)
 
 # ==========================================
 # 2. ЧТЕНИЕ И РАСПРЕДЕЛЕНИЕ АТОМОВ
@@ -82,7 +85,7 @@ local_atoms = full_system[mask]
 local_atoms.set_cell(cell)
 local_atoms.set_pbc(pbc)
 
-print(f"[{rank}] Coords {my_coords}: Atoms {len(local_atoms)} | Bounds X[{my_start[0]:.1f}:{my_end[0]:.1f}]", flush=True)
+# print(f"[{rank}] Coords {my_coords}: Atoms {len(local_atoms)} | Bounds X[{my_start[0]:.1f}:{my_end[0]:.1f}]", flush=True)
 comm.Barrier()
 
 # ==========================================
@@ -149,8 +152,37 @@ for i, j in pairs:
     if i < local_indices_count or j < local_indices_count:
         valid_pairs += 1
 
-print(f"[{rank}] DONE. Valid pairs: {valid_pairs}", flush=True)
+# print(f"[{rank}] DONE. Valid pairs: {valid_pairs}", flush=True)
+from dscribe.descriptors import SOAP, ACSF
+unique_symbols = set(current_atoms.symbols)
+# print(unique_symbols)
+len(current_atoms)
+species_str = np.array(list(unique_symbols))
+R_cut = 6
+n_max = 8
+l_max = 4
+soap_test = SOAP(
+    species=species_str,
+    periodic=False,
+    r_cut=5,
+    n_max=n_max,
+    l_max=l_max,
+    compression = {'mode':'mu2'})
+local_enviroments = soap_test.create(current_atoms, n_jobs = 1)
+local_enviroments.shape
 
 comm.Barrier()
+
+usage_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+usage_mb = usage_kb / 1024.0
+all_usages = comm.gather(usage_mb, root=0)
 if rank == 0:
-    print(f">>> SUCCESS. Total time: {MPI.Wtime() - t_start:.4f} sec <<<", flush=True)
+    result_data = {
+        "cores": size,
+        "time_sec" :MPI.Wtime() - t_start,
+        "memory_peak_rank0_mb": all_usages[0],           # Сколько съел Мастер
+        "memory_peak_worker_avg_mb": np.mean(all_usages[1:]) if size > 1 else 0, # Среднее по рабочим
+        "memory_total_cluster_mb": sum(all_usages) 
+    }
+    print(json.dumps(result_data))
+    # print(f">>> SUCCESS. Total time: {MPI.Wtime() - t_start:.4f} sec <<<", flush=True)

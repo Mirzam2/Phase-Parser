@@ -20,7 +20,7 @@ comm.Barrier()
 t_start_global = MPI.Wtime()
 
 # --- ПАРАМЕТРЫ ---
-FILENAME = "HfB2_X.dat" 
+FILENAME = "data/HfB2_X.dat" 
 CUTOFF = 3.5 
 
 # --- ЭТАП 1: ЧТЕНИЕ И НАРЕЗКА (Только Rank 0) ---
