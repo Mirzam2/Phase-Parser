@@ -1,0 +1,8 @@
+mpi4py
+numpy
+dscribe
+scikit-learn
+ase
+scipy
+hdbscan
+psutil
